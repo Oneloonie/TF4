@@ -8,3 +8,13 @@ DATABASE_URL = f"sqlite:///{os.path.join(BASE_DIR, 'TSQL2012.db')}"
 engine = create_engine(DATABASE_URL, echo=True)
 SessionLocal = sessionmaker(bind=engine)
 Base=declarative_base()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def init_db():
+    Base.metadata.create_all(bind=engine)
