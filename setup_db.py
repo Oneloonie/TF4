@@ -8,7 +8,7 @@ from pathlib import Path
 import os
 
 # Database file location
-DB_FILE = "TSQL2012.db"
+DB_FILE = os.path.join("/tmp", "TSQL2012.db")
 SQL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "TSQL2012.sql")
 
 

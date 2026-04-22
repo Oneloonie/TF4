@@ -4,8 +4,8 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from typing import Generator
 
 # Database URL
-SQLALCHEMY_DATABASE_URL = "sqlite:///./TSQL2012.db"
-
+SQLALCHEMY_DATABASE_URL = "sqlite:///tmp/TSQL2012.db"
+# For local development, you can use the following path:
 # Create SQLAlchemy engine
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
