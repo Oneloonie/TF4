@@ -1,459 +1,208 @@
-"""FastAPI application with comprehensive REST API endpoints."""
-from fastapi import FastAPI, Depends, HTTPException, Query
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Depends, HTTPException
 from sqlalchemy.orm import Session
-from database import get_db, init_db
-import crud
-from schema import (
-    Employee, EmployeeCreate, EmployeeUpdate, Customer, CustomerCreate, CustomerUpdate, Order, OrderCreate,
-    OrderUpdate, Message, CountResponse, ErrorResponse
+from typing import List, Optional
+
+from database import SessionLocal
+from crud import (
+    # Employees
+    get_employee, get_employees, create_employee, update_employee, delete_employee,
+    # Customers
+    get_customer, get_customers, get_customers_by_country,
+    create_customer, update_customer, delete_customer,
+    # Orders
+    get_order, get_orders, get_orders_by_customer, get_orders_by_employee,
+    create_order, update_order, delete_order,
+    # Order Details
+    get_order_detail, get_order_details_by_order,
+    create_order_detail, update_order_detail, delete_order_detail,
+    # Advanced queries
+    get_orders_on_last_day,
+    get_orders_by_top_customers,
+    get_employees_no_orders_after,
+    get_customer_only_countries,
+    get_customers_ordered_in_year_not_other,
+    get_running_total_qty_by_customer_month,
+)
+from schemas import (
+    EmployeeCreate, EmployeeUpdate, EmployeeResponse,
+    CustomerCreate, CustomerUpdate, CustomerResponse,
+    OrderCreate, OrderUpdate, OrderResponse,
+    OrderDetailCreate, OrderDetailUpdate, OrderDetailResponse,
+    RunningTotalResponse,
 )
 
-# Initialize FastAPI app
-app = FastAPI(
-    title="TSQL2012 FastAPI",
-    description="Complete REST API for TSQL2012 database with Employees, Customers, Orders, and OrderDetails",
-    version="1.0.0"
-)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Initialize database on startup
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database on app startup."""
-    init_db()
+app = FastAPI(title="TSQL2012 API", version="0.1.0")
 
 
-# ==================== HEALTH CHECK ===================
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
+
+# ---------------- Health Check ----------------
 
 @app.get("/")
 def health_check():
-    return {"status": "Have a good one ZHEN "}
+    return {"status": "Have a good one ZHEN"}
 
 
-# ==================== STATISTICS ====================
+# ---------------- Employees ----------------
 
-@app.get("/V0/stats", tags=["Statistics"])
-async def get_statistics(db: Session = Depends(get_db)):
-    """Get database statistics."""
-    return {
-        "total_employees": crud.count_employees(db),
-        "total_customers": crud.count_customers(db),
-        "total_orders": crud.count_orders(db),
-        "total_order_details": crud.count_order_details(db),
-        "total_sales": crud.get_total_sales(db),
-        "average_order_value": crud.get_average_order_value(db)
-    }
+@app.get("/employees", response_model=List[EmployeeResponse])
+def list_employees(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return get_employees(db, skip=skip, limit=limit)
 
+@app.get("/employees/{empid}", response_model=EmployeeResponse)
+def read_employee(empid: int, db: Session = Depends(get_db)):
+    emp = get_employee(db, empid)
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+    return emp
 
-# ==================== EMPLOYEES ====================
+@app.post("/employees", response_model=EmployeeResponse, status_code=201)
+def create_employee_endpoint(emp: EmployeeCreate, db: Session = Depends(get_db)):
+    return create_employee(db, emp)
 
-@app.get("/V0/employees", response_model=list[Employee], tags=["Employees"])
-async def list_employees(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    db: Session = Depends(get_db)
-):
-    """Get all employees with pagination."""
-    return crud.get_employees(db, skip=skip, limit=limit)
+@app.put("/employees/{empid}", response_model=EmployeeResponse)
+def update_employee_endpoint(empid: int, emp: EmployeeUpdate, db: Session = Depends(get_db)):
+    updated = update_employee(db, empid, emp)
+    if not updated:
+        raise HTTPException(404, "Employee not found")
+    return updated
 
-
-@app.get("/V0/employees/{empid}", response_model=Employee, tags=["Employees"])
-async def get_employee(empid: int, db: Session = Depends(get_db)):
-    """Get employee by ID."""
-    employee = crud.get_employee(db, empid)
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-    return employee
+@app.delete("/employees/{empid}", status_code=204)
+def delete_employee_endpoint(empid: int, db: Session = Depends(get_db)):
+    if not delete_employee(db, empid):
+        raise HTTPException(404, "Employee not found")
 
 
-@app.post("/V0/employees", response_model=Employee, tags=["Employees"])
-async def create_employee(employee: EmployeeCreate, db: Session = Depends(get_db)):
-    """Create a new employee."""
-    return crud.create_employee(db, employee)
+# ---------------- Customers ----------------
+
+@app.get("/customers", response_model=List[CustomerResponse])
+def list_customers(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return get_customers(db, skip=skip, limit=limit)
+
+@app.get("/customers/{custid}", response_model=CustomerResponse)
+def read_customer(custid: int, db: Session = Depends(get_db)):
+    cust = get_customer(db, custid)
+    if not cust:
+        raise HTTPException(404, "Customer not found")
+    return cust
+
+@app.get("/customers/country/{country}", response_model=List[CustomerResponse])
+def list_customers_by_country(country: str, db: Session = Depends(get_db)):
+    return get_customers_by_country(db, country)
+
+@app.post("/customers", response_model=CustomerResponse, status_code=201)
+def create_customer_endpoint(cust: CustomerCreate, db: Session = Depends(get_db)):
+    return create_customer(db, cust)
+
+@app.put("/customers/{custid}", response_model=CustomerResponse)
+def update_customer_endpoint(custid: int, cust: CustomerUpdate, db: Session = Depends(get_db)):
+    updated = update_customer(db, custid, cust)
+    if not updated:
+        raise HTTPException(404, "Customer not found")
+    return updated
+
+@app.delete("/customers/{custid}", status_code=204)
+def delete_customer_endpoint(custid: int, db: Session = Depends(get_db)):
+    if not delete_customer(db, custid):
+        raise HTTPException(404, "Customer not found")
 
 
-@app.put("/V0/employees/{empid}", response_model=Employee, tags=["Employees"])
-async def update_employee(empid: int, employee: EmployeeUpdate, db: Session = Depends(get_db)):
-    """Update an employee."""
-    db_employee = crud.update_employee(db, empid, employee)
-    if not db_employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-    return db_employee
+# ---------------- Orders ----------------
 
+@app.get("/orders", response_model=List[OrderResponse])
+def list_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    return get_orders(db, skip=skip, limit=limit)
 
-@app.delete("/V0/employees/{empid}", response_model=Message, tags=["Employees"])
-async def delete_employee(empid: int, db: Session = Depends(get_db)):
-    """Delete an employee."""
-    if not crud.delete_employee(db, empid):
-        raise HTTPException(status_code=404, detail="Employee not found")
-    return {"message": "Employee deleted successfully"}
-
-
-@app.get("/V0/employees/city/{city}", response_model=list[Employee], tags=["Employees"])
-async def get_employees_by_city(city: str, db: Session = Depends(get_db)):
-    """Get employees by city."""
-    return crud.get_employees_by_city(db, city)
-
-
-@app.get("/V0/employees-with-manager", response_model=list[Employee], tags=["Employees"])
-async def get_employees_with_manager(db: Session = Depends(get_db)):
-    """Get employees who have a manager."""
-    return crud.get_employees_with_manager(db)
-
-
-# ==================== CUSTOMERS ====================
-
-@app.get("/V0/customers", response_model=list[Customer], tags=["Customers"])
-async def list_customers(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    db: Session = Depends(get_db)
-):
-    """Get all customers."""
-    return crud.get_customers(db, skip=skip, limit=limit)
-
-
-@app.get("/V0/customers/{custid}", response_model=Customer, tags=["Customers"])
-async def get_customer(custid: int, db: Session = Depends(get_db)):
-    """Get customer by ID."""
-    customer = crud.get_customer(db, custid)
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    return customer
-
-
-@app.post("/V0/customers", response_model=Customer, tags=["Customers"])
-async def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
-    """Create a new customer."""
-    return crud.create_customer(db, customer)
-
-
-@app.put("/V0/customers/{custid}", response_model=Customer, tags=["Customers"])
-async def update_customer(custid: int, customer: CustomerUpdate, db: Session = Depends(get_db)):
-    """Update a customer."""
-    db_customer = crud.update_customer(db, custid, customer)
-    if not db_customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    return db_customer
-
-
-@app.delete("/V0/customers/{custid}", response_model=Message, tags=["Customers"])
-async def delete_customer(custid: int, db: Session = Depends(get_db)):
-    """Delete a customer."""
-    if not crud.delete_customer(db, custid):
-        raise HTTPException(status_code=404, detail="Customer not found")
-    return {"message": "Customer deleted successfully"}
-
-
-@app.get("/V0/customers/country/{country}", response_model=list[Customer], tags=["Customers"])
-async def get_customers_by_country(country: str, db: Session = Depends(get_db)):
-    """Get customers by country."""
-    return crud.get_customers_by_country(db, country)
-
-
-@app.get("/V0/customers/city/{city}", response_model=list[Customer], tags=["Customers"])
-async def get_customers_by_city(city: str, db: Session = Depends(get_db)):
-    """Get customers by city."""
-    return crud.get_customers_by_city(db, city)
-
-
-@app.get("/V0/customers/search/{search_term}", response_model=list[Customer], tags=["Customers"])
-async def search_customers(search_term: str, db: Session = Depends(get_db)):
-    """Search customers by company or contact name."""
-    return crud.search_customers(db, search_term)
-
-
-# ==================== ORDERS ====================
-
-@app.get("/V0/orders", response_model=list[Order], tags=["Orders"])
-async def list_orders(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    db: Session = Depends(get_db)
-):
-    """Get all orders."""
-    return crud.get_orders(db, skip=skip, limit=limit)
-
-
-@app.get("/V0/orders/{orderid}", response_model=Order, tags=["Orders"])
-async def get_order(orderid: int, db: Session = Depends(get_db)):
-    """Get order by ID."""
-    order = crud.get_order(db, orderid)
+@app.get("/orders/{orderid}", response_model=OrderResponse)
+def read_order(orderid: int, db: Session = Depends(get_db)):
+    order = get_order(db, orderid)
     if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(404, "Order not found")
     return order
 
-
-@app.post("/V0/orders", response_model=Order, tags=["Orders"])
-async def create_order(order: OrderCreate, db: Session = Depends(get_db)):
-    """Create a new order."""
-    return crud.create_order(db, order)
-
-
-@app.put("/V0/orders/{orderid}", response_model=Order, tags=["Orders"])
-async def update_order(orderid: int, order: OrderUpdate, db: Session = Depends(get_db)):
-    """Update an order."""
-    db_order = crud.update_order(db, orderid, order)
-    if not db_order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    return db_order
-
-
-@app.delete("/V0/orders/{orderid}", response_model=Message, tags=["Orders"])
-async def delete_order(orderid: int, db: Session = Depends(get_db)):
-    """Delete an order."""
-    if not crud.delete_order(db, orderid):
-        raise HTTPException(status_code=404, detail="Order not found")
-    return {"message": "Order deleted successfully"}
-
-
-@app.get("/V0/orders/customer/{custid}", response_model=list[Order], tags=["Orders"])
-async def get_orders_by_customer(custid: int, db: Session = Depends(get_db)):
-    """Get orders by customer."""
-    return crud.get_orders_by_customer(db, custid)
-
-
-@app.get("/V0/orders/employee/{empid}", response_model=list[Order], tags=["Orders"])
-async def get_orders_by_employee(empid: int, db: Session = Depends(get_db)):
-    """Get orders by employee."""
-    return crud.get_orders_by_employee(db, empid)
-
-
-@app.get("/V0/orders/unshipped", response_model=list[Order], tags=["Orders"])
-async def get_unshipped_orders(db: Session = Depends(get_db)):
-    """Get unshipped orders."""
-    return crud.get_unshipped_orders(db)
-
-
-@app.get("/V0/orders/details/{orderid}", tags=["Orders"])
-async def get_order_with_details(orderid: int, db: Session = Depends(get_db)):
-    """Get order with detailed information."""
-    result = crud.get_orders_with_details(db, orderid)
-    if not result:
-        raise HTTPException(status_code=404, detail="Order not found")
-    return result
-
-
-# ==================== ANALYTICS ====================
-
-@app.get("/V0/analytics/customer-orders", tags=["Analytics"])
-async def get_customer_order_count(db: Session = Depends(get_db)):
-    """Get customer with their order counts."""
-    return crud.get_customer_order_count(db)
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
-# ==================== EMPLOYEES ====================
-
-@app.get("/V0/employees", response_model=list[Employee], tags=["Employees"])
-async def list_employees(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    db: Session = Depends(get_db)
-):
-    """Get all employees with pagination."""
-    return crud.get_employees(db, skip=skip, limit=limit)
-
-
-@app.get("/V0/employees/{empid}", response_model=Employee, tags=["Employees"])
-async def get_employee(empid: int, db: Session = Depends(get_db)):
-    """Get employee by ID."""
-    employee = crud.get_employee(db, empid)
-    if not employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-    return employee
-
-
-@app.post("/V0/employees", response_model=Employee, tags=["Employees"])
-async def create_employee(employee: EmployeeCreate, db: Session = Depends(get_db)):
-    """Create a new employee."""
-    return crud.create_employee(db, employee)
-
-
-@app.put("/V0/employees/{empid}", response_model=Employee, tags=["Employees"])
-async def update_employee(empid: int, employee: EmployeeUpdate, db: Session = Depends(get_db)):
-    """Update an employee."""
-    db_employee = crud.update_employee(db, empid, employee)
-    if not db_employee:
-        raise HTTPException(status_code=404, detail="Employee not found")
-    return db_employee
-
-
-@app.delete("/V0/employees/{empid}", response_model=Message, tags=["Employees"])
-async def delete_employee(empid: int, db: Session = Depends(get_db)):
-    """Delete an employee."""
-    if not crud.delete_employee(db, empid):
-        raise HTTPException(status_code=404, detail="Employee not found")
-    return {"message": "Employee deleted successfully"}
-
-
-@app.get("/V0/employees/city/{city}", response_model=list[Employee], tags=["Employees"])
-async def get_employees_by_city(city: str, db: Session = Depends(get_db)):
-    """Get employees by city."""
-    return crud.get_employees_by_city(db, city)
-
-
-@app.get("/V0/employees-with-manager", response_model=list[Employee], tags=["Employees"])
-async def get_employees_with_manager(db: Session = Depends(get_db)):
-    """Get employees who have a manager."""
-    return crud.get_employees_with_manager(db)
-
-
-# ==================== CUSTOMERS ====================
-
-@app.get("/V0/customers", response_model=list[Customer], tags=["Customers"])
-async def list_customers(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    db: Session = Depends(get_db)
-):
-    """Get all customers."""
-    return crud.get_customers(db, skip=skip, limit=limit)
-
-
-@app.get("/V0/customers/{custid}", response_model=Customer, tags=["Customers"])
-async def get_customer(custid: int, db: Session = Depends(get_db)):
-    """Get customer by ID."""
-    customer = crud.get_customer(db, custid)
-    if not customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    return customer
-
-
-@app.post("/V0/customers", response_model=Customer, tags=["Customers"])
-async def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
-    """Create a new customer."""
-    return crud.create_customer(db, customer)
-
-
-@app.put("/V0/customers/{custid}", response_model=Customer, tags=["Customers"])
-async def update_customer(custid: int, customer: CustomerUpdate, db: Session = Depends(get_db)):
-    """Update a customer."""
-    db_customer = crud.update_customer(db, custid, customer)
-    if not db_customer:
-        raise HTTPException(status_code=404, detail="Customer not found")
-    return db_customer
-
-
-@app.delete("/V0/customers/{custid}", response_model=Message, tags=["Customers"])
-async def delete_customer(custid: int, db: Session = Depends(get_db)):
-    """Delete a customer."""
-    if not crud.delete_customer(db, custid):
-        raise HTTPException(status_code=404, detail="Customer not found")
-    return {"message": "Customer deleted successfully"}
-
-
-@app.get("/V0/customers/country/{country}", response_model=list[Customer], tags=["Customers"])
-async def get_customers_by_country(country: str, db: Session = Depends(get_db)):
-    """Get customers by country."""
-    return crud.get_customers_by_country(db, country)
-
-
-@app.get("/V0/customers/city/{city}", response_model=list[Customer], tags=["Customers"])
-async def get_customers_by_city(city: str, db: Session = Depends(get_db)):
-    """Get customers by city."""
-    return crud.get_customers_by_city(db, city)
-
-
-@app.get("/V0/customers/search/{search_term}", response_model=list[Customer], tags=["Customers"])
-async def search_customers(search_term: str, db: Session = Depends(get_db)):
-    """Search customers by company or contact name."""
-    return crud.search_customers(db, search_term)
-
-
-# ==================== ORDERS ====================
-
-@app.get("/V0/orders", response_model=list[Order], tags=["Orders"])
-async def list_orders(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    db: Session = Depends(get_db)
-):
-    """Get all orders."""
-    return crud.get_orders(db, skip=skip, limit=limit)
-
-
-@app.get("/V0/orders/{orderid}", response_model=Order, tags=["Orders"])
-async def get_order(orderid: int, db: Session = Depends(get_db)):
-    """Get order by ID."""
-    order = crud.get_order(db, orderid)
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    return order
-
-
-@app.post("/V0/orders", response_model=Order, tags=["Orders"])
-async def create_order(order: OrderCreate, db: Session = Depends(get_db)):
-    """Create a new order."""
-    return crud.create_order(db, order)
-
-
-@app.put("/V0/orders/{orderid}", response_model=Order, tags=["Orders"])
-async def update_order(orderid: int, order: OrderUpdate, db: Session = Depends(get_db)):
-    """Update an order."""
-    db_order = crud.update_order(db, orderid, order)
-    if not db_order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    return db_order
-
-
-@app.delete("/V0/orders/{orderid}", response_model=Message, tags=["Orders"])
-async def delete_order(orderid: int, db: Session = Depends(get_db)):
-    """Delete an order."""
-    if not crud.delete_order(db, orderid):
-        raise HTTPException(status_code=404, detail="Order not found")
-    return {"message": "Order deleted successfully"}
-
-
-@app.get("/V0/orders/customer/{custid}", response_model=list[Order], tags=["Orders"])
-async def get_orders_by_customer(custid: int, db: Session = Depends(get_db)):
-    """Get orders by customer."""
-    return crud.get_orders_by_customer(db, custid)
-
-
-@app.get("/V0/orders/employee/{empid}", response_model=list[Order], tags=["Orders"])
-async def get_orders_by_employee(empid: int, db: Session = Depends(get_db)):
-    """Get orders by employee."""
-    return crud.get_orders_by_employee(db, empid)
-
-
-@app.get("/V0/orders/unshipped", response_model=list[Order], tags=["Orders"])
-async def get_unshipped_orders(db: Session = Depends(get_db)):
-    """Get unshipped orders."""
-    return crud.get_unshipped_orders(db)
-
-
-@app.get("/V0/orders/details/{orderid}", tags=["Orders"])
-async def get_order_with_details(orderid: int, db: Session = Depends(get_db)):
-    """Get order with detailed information."""
-    result = crud.get_orders_with_details(db, orderid)
-    if not result:
-        raise HTTPException(status_code=404, detail="Order not found")
-    return result
-
-
-# ==================== ANALYTICS ====================
-
-@app.get("/V0/analytics/customer-orders", tags=["Analytics"])
-async def get_customer_order_count(db: Session = Depends(get_db)):
-    """Get customer with their order counts."""
-    return crud.get_customer_order_count(db)
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+@app.get("/orders/customer/{custid}", response_model=List[OrderResponse])
+def list_orders_by_customer(custid: int, db: Session = Depends(get_db)):
+    return get_orders_by_customer(db, custid)
+
+@app.get("/orders/employee/{empid}", response_model=List[OrderResponse])
+def list_orders_by_employee(empid: int, db: Session = Depends(get_db)):
+    return get_orders_by_employee(db, empid)
+
+@app.post("/orders", response_model=OrderResponse, status_code=201)
+def create_order_endpoint(order: OrderCreate, db: Session = Depends(get_db)):
+    return create_order(db, order)
+
+@app.put("/orders/{orderid}", response_model=OrderResponse)
+def update_order_endpoint(orderid: int, order: OrderUpdate, db: Session = Depends(get_db)):
+    updated = update_order(db, orderid, order)
+    if not updated:
+        raise HTTPException(404, "Order not found")
+    return updated
+
+@app.delete("/orders/{orderid}", status_code=204)
+def delete_order_endpoint(orderid: int, db: Session = Depends(get_db)):
+    if not delete_order(db, orderid):
+        raise HTTPException(404, "Order not found")
+
+
+# ---------------- Order Details ----------------
+
+@app.get("/orderdetails/{orderid}/{productid}", response_model=OrderDetailResponse)
+def read_order_detail(orderid: int, productid: int, db: Session = Depends(get_db)):
+    od = get_order_detail(db, orderid, productid)
+    if not od:
+        raise HTTPException(404, "Order detail not found")
+    return od
+
+@app.get("/orderdetails/order/{orderid}", response_model=List[OrderDetailResponse])
+def list_order_details_by_order(orderid: int, db: Session = Depends(get_db)):
+    return get_order_details_by_order(db, orderid)
+
+@app.post("/orderdetails", response_model=OrderDetailResponse, status_code=201)
+def create_order_detail_endpoint(od: OrderDetailCreate, db: Session = Depends(get_db)):
+    return create_order_detail(db, od)
+
+@app.put("/orderdetails/{orderid}/{productid}", response_model=OrderDetailResponse)
+def update_order_detail_endpoint(orderid: int, productid: int, od: OrderDetailUpdate, db: Session = Depends(get_db)):
+    updated = update_order_detail(db, orderid, productid, od)
+    if not updated:
+        raise HTTPException(404, "Order detail not found")
+    return updated
+
+@app.delete("/orderdetails/{orderid}/{productid}", status_code=204)
+def delete_order_detail_endpoint(orderid: int, productid: int, db: Session = Depends(get_db)):
+    if not delete_order_detail(db, orderid, productid):
+        raise HTTPException(404, "Order detail not found")
+
+
+# ---------------- Advanced Queries ----------------
+
+@app.get("/advanced/orders-last-day", response_model=List[OrderResponse])
+def orders_on_last_day(db: Session = Depends(get_db)):
+    return get_orders_on_last_day(db)
+
+@app.get("/advanced/top-customers-orders", response_model=List[OrderResponse])
+def orders_by_top_customers(db: Session = Depends(get_db)):
+    return get_orders_by_top_customers(db)
+
+@app.get("/advanced/employees-no-orders-after/{date}", response_model=List[EmployeeResponse])
+def employees_no_orders_after(date: str, db: Session = Depends(get_db)):
+    return get_employees_no_orders_after(db, date)
+
+@app.get("/advanced/customer-only-countries")
+def customer_only_countries(db: Session = Depends(get_db)):
+    return get_customer_only_countries(db)
+
+@app.get("/advanced/customers-ordered-year-not-other")
+def customers_ordered_in_year_not_other(year1: int, year2: int, db: Session = Depends(get_db)):
+    return get_customers_ordered_in_year_not_other(db, year1, year2)
+
+@app.get("/advanced/running-total", response_model=List[RunningTotalResponse])
+def running_total(db: Session = Depends(get_db)):
+    return get_running_total_qty_by_customer_month(db)
