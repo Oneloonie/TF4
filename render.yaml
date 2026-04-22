@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: tsql2012-fastapi
+    runtime: python
+    pythonVersion: 3.11
+    startCommand: bash build.sh
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11
