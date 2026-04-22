@@ -22,7 +22,6 @@ build/
 .vscode/
 *.log
 *.db
-test_tsql2012.db
-TSQL2012.sql
+test_tsql2012.db 
 README.md
 .github/
