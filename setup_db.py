@@ -5,10 +5,13 @@ Parses actual INSERT statements from the UTF-16 SQL file and creates database.
 import sqlite3
 import re
 from pathlib import Path
+import os
 
 # Database file location
 DB_FILE = "TSQL2012.db"
-SQL_FILE = "TSQL2012.sql"
+SQL_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "TSQL2012.sql")
+
+
 
 
 def create_sqlite_schema(conn):
